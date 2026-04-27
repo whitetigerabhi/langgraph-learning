@@ -233,3 +233,16 @@ uvicorn.pid
 **/storage/
 *.sqlite
 *.db
+# LangGraph persistence artifacts (do not commit)
+langgraph_sqlite_demo/storage/
+**/storage/
+*.sqlite
+*.db
+
+# Runtime artifacts
+uvicorn.log
+uvicorn.pid
+
+# Secrets
+.env
+.env.*
