@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+requests
+openai
+langgraph
+langgraph-checkpoint-sqlite
+python-multipart
