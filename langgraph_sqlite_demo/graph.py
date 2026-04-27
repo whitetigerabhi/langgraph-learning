@@ -79,8 +79,13 @@ def build_graph():
     g.add_edge("llm_call", END)
 
     # SQLite checkpointer (file-based)
+    
     db_path = os.environ.get("CHECKPOINT_DB", "./storage/checkpoints.sqlite")
+    db_dir = os.path.dirname(db_path) or "."
+    os.makedirs(db_dir, exist_ok=True)
+
     conn = sqlite3.connect(db_path, check_same_thread=False)
+
     checkpointer = SqliteSaver(conn)
 
     return g.compile(checkpointer=checkpointer)
