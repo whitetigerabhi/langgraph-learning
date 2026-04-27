@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+
+# Secrets / env
+.env
+.env.*
+
+# Runtime artifacts
+uvicorn.log
+uvicorn.pid
+
+# LangGraph persistence artifacts (do not commit)
+**/storage/
+*.sqlite
+*.db
