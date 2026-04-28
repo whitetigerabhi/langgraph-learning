@@ -246,3 +246,18 @@ uvicorn.pid
 # Secrets
 .env
 .env.*
+
+
+# LangGraph persistence artifacts (do not commit)
+**/storage/
+*.sqlite
+*.db
+
+# Runtime artifacts
+uvicorn.log
+uvicorn.pid
+
+# Secrets
+.env
+.env.*
+``
