@@ -23,4 +23,3 @@ def get_state(thread_id: str):
     config = {"configurable": {"thread_id": thread_id}}
     snapshot = GRAPH.get_state(config)
     return {"thread_id": thread_id, "values": snapshot.values, "next": list(snapshot.next)}
-``

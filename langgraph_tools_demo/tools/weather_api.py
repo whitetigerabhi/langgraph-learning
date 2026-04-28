@@ -70,4 +70,3 @@ def fetch_current_weather(location: str) -> dict:
         "winddirection_deg": cw.get("winddirection"),
         "observed_at": cw.get("time"),
     }
-``

@@ -38,4 +38,3 @@ def fetch_live_cricket(query: str = "") -> dict:
         return {"live": live_simple[:5], "selected": None}
 
     return {"live": live_simple[:5], "selected": live_simple[0]}
-``
