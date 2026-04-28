@@ -53,10 +53,23 @@ def plan_node(state: ToolState) -> ToolState:
     qlow = q.lower()
 
     # Deterministic fast-path
-    if "weather" in qlow or re.search(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", q, re.IGNORECASE):
-        return {"intent": "weather", "location": q}
+
+# Deterministic fast-path for WEATHER:
+postcode_match = re.search(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", q, re.IGNORECASE)
+    if "weather" in qlow or postcode_match:
+    if postcode_match:
+        return {"intent": "weather", "location": postcode_match.group(0).upper()}
+    # try to capture "in <place>" or "for <place>"
+    m = re.search(r"\b(?:in|for)\s+(.+)$", q, re.IGNORECASE)
+    if m:
+        return {"intent": "weather", "location": m.group(1).strip()}
+    return {"intent": "weather", "location": q}
+
     if "cricket" in qlow or "score" in qlow or "csk" in qlow:
-        return {"intent": "cricket", "cricket_query": q}
+    # extract CSK if present, else pass whole query
+    if "csk" in qlow:
+        return {"intent": "cricket", "cricket_query": "CSK"}
+    return {"intent": "cricket", "cricket_query": q}
 
     # Otherwise use LLM classifier
     client = AzureOpenAI(
