@@ -56,4 +56,3 @@ def execute_tools_node(state: AgentState):
             })
 
     return {"tool_results": tool_results, "messages": messages, "tool_calls": []}
-``
