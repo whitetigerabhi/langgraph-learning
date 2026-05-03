@@ -1,7 +1,8 @@
 import os
 from typing import Tuple, Dict, Any
 
-CS_BLOCK", "4"))
+# Default: block Medium+ (commonly represented as >= 4)
+CS_BLOCK_THRESHOLD = int(os.environ.get("CS_BLOCK_THRESHOLD", "4"))
 
 _AZURE_SDK_OK = True
 _AZURE_IMPORT_ERR = ""
@@ -18,8 +19,8 @@ except Exception as e:
 def _client():
     if not _AZURE_SDK_OK:
         raise RuntimeError(
-            "Azure Content Safety SDK is not available. Install: "
-            "python3 -m pip install --user azure-ai-contentsafety azure-core. "
+            "Azure Content Safety SDK is not available. Install:\n"
+            "  python3 -m pip install --user azure-ai-contentsafety azure-core\n"
             f"Import error: {_AZURE_IMPORT_ERR}"
         )
     endpoint = os.environ["CONTENT_SAFETY_ENDPOINT"]
@@ -28,6 +29,9 @@ def _client():
 
 
 def analyze_text(text: str) -> Dict[str, Any]:
+    """
+    Calls Azure AI Content Safety Analyze Text API and returns max severity + per-category severities.
+    """
     client = _client()
     resp = client.analyze_text(AnalyzeTextOptions(text=text))
 
