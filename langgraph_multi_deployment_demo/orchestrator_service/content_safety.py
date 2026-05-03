@@ -40,4 +40,4 @@ def should_block(text: str) -> tuple[bool, dict]:
     """
     details = analyze_text(text)
     return (details["max_severity"] >= CS_BLOCK_THRESHOLD, details)
-PY
+
