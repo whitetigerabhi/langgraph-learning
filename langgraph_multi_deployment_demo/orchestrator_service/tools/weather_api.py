@@ -44,15 +44,19 @@ def _geocode_uk_postcode(postcode: str):
 
 def fetch_current_weather(location: str) -> dict:
     """
-    Public tool function expected by execute_tools.py
+    Public tool function expected by nodes/execute_tools.py
     """
     location = (location or "").strip()
     if not location:
         raise ValueError("location is required")
 
+    # If it's a UK postcode, try postcodes.io first
     geo = _geocode_uk_postcode(location) if UK_POSTCODE_RE.match(location) else None
+
+    # Otherwise fall back to Open-Meteo geocoder
     if not geo:
         geo = _geocode_openmeteo(location)
+
     if not geo:
         raise ValueError(f"Could not geocode location: {location}")
 
@@ -72,4 +76,3 @@ def fetch_current_weather(location: str) -> dict:
         "winddirection_deg": cw.get("winddirection"),
         "observed_at": cw.get("time"),
     }
-PY
