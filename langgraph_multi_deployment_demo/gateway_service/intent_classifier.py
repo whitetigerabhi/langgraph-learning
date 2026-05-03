@@ -1,5 +1,8 @@
-re
+import os, json, re
 from openai import AzureOpenAI
+
+_CLASSIFIER_DEPLOYMENT") or os.environ.get("AZURE_OPENAI_DEPLOYMENT", "chat-model")
+
 
 def _client():
     return AzureOpenAI(
@@ -8,7 +11,6 @@ def _client():
         api_version="2024-10-21",
     )
 
-CLASSIFIER_DEPLOYMENT = os.environ.get("AZURE_OPENAI_CLASSIFIER_DEPLOYMENT") or os.environ.get("AZURE_OPENAI_DEPLOYMENT", "chat-model")
 
 def _extract_json(raw: str):
     try:
@@ -17,16 +19,8 @@ def _extract_json(raw: str):
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         return json.loads(m.group(0)) if m else {}
 
+
 def classify_intent(message: str) -> dict:
-    """
-    Output JSON only:
-    {
-      "intent":"weather|cricket|general|invalid",
-      "location":"",
-      "team":"",
-      "confidence":0.0
-    }
-    """
     client = _client()
     prompt = f"""
 Return ONLY JSON:
@@ -36,21 +30,11 @@ Return ONLY JSON:
   "team":"",
   "confidence":0.0
 }}
-
-Guidance:
-- weather: user wants current weather for a place/postcode
-- cricket: user wants live cricket/IPL score, team like CSK
-- general: general knowledge questions
-- invalid: unclear or nonsense
-
 User message: {message}
 """
     resp = client.chat.completions.create(
         model=CLASSIFIER_DEPLOYMENT,
-        messages=[
-            {"role": "system", "content": "Return only JSON. No markdown."},
-            {"role": "user", "content": prompt},
-        ],
+        messages=[{"role": "system", "content": "Return only JSON."}, {"role": "user", "content": prompt}],
         max_tokens=200,
     )
     data = _extract_json(resp.choices[0].message.content.strip())

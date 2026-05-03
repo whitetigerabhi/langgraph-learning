@@ -1,30 +1,40 @@
 import os
-from azure.core.credentials import AzureKeyCredential
-from azure.ai.contentsafety import ContentSafetyClient
-from azure.ai.contentsafety.models import AnalyzeTextOptions
+from typing import Tuple, Dict, Any
 
-# Block at or above this severity (default: 4 => Medium+ in common ACS severity scale)
 CS_BLOCK_THRESHOLD = int(os.environ.get("CS_BLOCK_THRESHOLD", "4"))
 
-def _client() -> ContentSafetyClient:
-    """
-    Create an Azure AI Content Safety client using endpoint + key.
-    Azure AI Content Safety provides text moderation APIs that detect hate, violence,
-    sexual content, and self-harm with severity levels. 
-    """
+_AZURE_SDK_OK = True
+_AZURE_IMPORT_ERR = ""
+
+try:
+    from azure.core.credentials import AzureKeyCredential
+    from azure.ai.contentsafety import ContentSafetyClient
+    from azure.ai.contentsafety.models import AnalyzeTextOptions
+except Exception as e:
+    _AZURE_SDK_OK = False
+    _AZURE_IMPORT_ERR = str(e)
+
+
+def _client():
+    if not _AZURE_SDK_OK:
+        raise RuntimeError(
+            "Azure Content Safety SDK is not available. Install: "
+            "python3 -m pip install --user azure-ai-contentsafety azure-core. "
+            f"Import error: {_AZURE_IMPORT_ERR}"
+        )
     endpoint = os.environ["CONTENT_SAFETY_ENDPOINT"]
     key = os.environ["CONTENT_SAFETY_KEY"]
     return ContentSafetyClient(endpoint, AzureKeyCredential(key))
 
-def analyze_text(text: str) -> dict:
+
+def analyze_text(text: str) -> Dict[str, Any]:
     """
-    Calls Azure AI Content Safety Analyze Text API.
-    Returns max severity + per-category severities.
+    Azure AI Content Safety Analyze Text API: returns severity per harm category. [1](https://oneuptime.com/blog/post/2026-02-16-how-to-configure-content-filtering-policies-in-azure-openai-service/view)[2](https://developers.openai.com/api/reference/resources/moderations/methods/create)
     """
     client = _client()
     resp = client.analyze_text(AnalyzeTextOptions(text=text))
 
-    categories = {}
+    categories: Dict[str, int] = {}
     max_sev = 0
     for item in resp.categories_analysis:
         sev = int(item.severity)
@@ -33,11 +43,7 @@ def analyze_text(text: str) -> dict:
 
     return {"max_severity": max_sev, "categories": categories}
 
-def should_block(text: str) -> tuple[bool, dict]:
-    """
-    Returns (block, details).
-    block=True if max_severity >= CS_BLOCK_THRESHOLD.
-    """
+
+def should_block(text: str) -> Tuple[bool, Dict[str, Any]]:
     details = analyze_text(text)
     return (details["max_severity"] >= CS_BLOCK_THRESHOLD, details)
-

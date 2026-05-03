@@ -44,4 +44,3 @@ def run(req: RunRequest):
             "error": result.get("error", ""),
         },
     }
-PY

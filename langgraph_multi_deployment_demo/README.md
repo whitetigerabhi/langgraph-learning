@@ -1,7 +1,10 @@
-# LangGraph Multi-Deployment Demo (Gateway + Orchestrator)# LangGraph Multi-Deployment Demo (Gateway + Or) + LLM intent classifier + routes to orchestrator
-- Orchestrator API (8040): LangGraph tool-calling agent (multi-tool per step) + SQLite checkpointer memory
+# LangGraph Multi Deployment Demo (Gateway + Orchestrator)
 
-## Required env vars
+## Services
+- Orchestrator (8040): LangGraph tool-calling agent (multi-tool per turn) + SQLite checkpoints
+- Gateway (8030): Azure AI Content Safety guardrails + cheap LLM intent classifier + routes to orchestrator
+
+## Env vars required
 CONTENT_SAFETY_ENDPOINT
 CONTENT_SAFETY_KEY
 AZURE_OPENAI_ENDPOINT
@@ -10,19 +13,20 @@ AZURE_OPENAI_DEPLOYMENT
 CRICKETDATA_API_KEY
 
 Optional:
+AZURE_OPENAI_CLASSIFIER_DEPLOYMENT
 CS_BLOCK_THRESHOLD (default 4)
 ORCHESTRATOR_URL (default http://localhost:8040)
 
 ## Run (two terminals)
 
 ### Terminal A: Orchestrator
-cd langgraph_multi_deployment_demo/orchestrator_service
+cd orchestrator_service
 mkdir -p storage
 export CHECKPOINT_DB="./storage/checkpoints.sqlite"
 uvicorn app:app --host 0.0.0.0 --port 8040
 
 ### Terminal B: Gateway
-cd langgraph_multi_deployment_demo/gateway_service
+cd gateway_service
 export ORCHESTRATOR_URL="http://localhost:8040"
 uvicorn app:app --host 0.0.0.0 --port 8030
 
@@ -33,5 +37,3 @@ curl -s -X POST http://localhost:8030/chat \
   -H 'Content-Type: application/json' \
   -H 'X-User-Role: user' \
   --data-binary "{\"thread_id\":\"$THREAD\",\"message\":\"Tell me the weather for CV32 7SU and the live cricket score for CSK.\"}"
-
-## Services

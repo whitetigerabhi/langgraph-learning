@@ -1,6 +1,11 @@
 from state import AgentState
 
+
 def init_node(state: AgentState):
+    """
+    Initialize default keys in state WITHOUT wiping existing values.
+    This is important because LangGraph + SQLite checkpointer persists state across runs.
+    """
     return {
         "messages": state.get("messages", []),
         "tool_calls": state.get("tool_calls", []),

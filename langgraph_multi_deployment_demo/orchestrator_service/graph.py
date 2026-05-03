@@ -1,5 +1,6 @@
 import os
 import sqlite3
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 
@@ -12,6 +13,7 @@ from nodes.agent_decide import agent_decide_node
 from nodes.execute_tools import execute_tools_node
 from nodes.finalize import finalize_node
 from nodes.output_guardrail import output_guardrail_node
+
 
 def build_graph():
     g = StateGraph(AgentState)
@@ -27,10 +29,11 @@ def build_graph():
     g.add_edge("init", "input_guardrail")
     g.add_edge("input_guardrail", "agent_decide")
 
-    g.add_conditional_edges("agent_decide", route_after_decide, {
-        "execute_tools": "execute_tools",
-        "finalize": "finalize",
-    })
+    g.add_conditional_edges(
+        "agent_decide",
+        route_after_decide,
+        {"execute_tools": "execute_tools", "finalize": "finalize"},
+    )
 
     g.add_edge("execute_tools", "finalize")
     g.add_edge("finalize", "output_guardrail")
@@ -42,5 +45,6 @@ def build_graph():
     checkpointer = SqliteSaver(conn)
 
     return g.compile(checkpointer=checkpointer)
+
 
 GRAPH = build_graph()

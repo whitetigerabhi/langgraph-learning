@@ -18,4 +18,3 @@ def preflight_rbac(role: str, query: str) -> tuple[bool, str]:
     if _matches_any(DESTRUCTIVE_PATTERNS, query) and role != "admin":
         return (False, "BLOCK: Destructive actions are restricted to admins. Please try again with a non-destructive request.")
     return (True, "")
-``

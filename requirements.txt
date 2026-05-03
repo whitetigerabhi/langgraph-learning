@@ -5,4 +5,5 @@ requests
 openai
 langgraph
 langgraph-checkpoint-sqlite
-python-multipart
+azure-ai-contentsafety
+azure-core

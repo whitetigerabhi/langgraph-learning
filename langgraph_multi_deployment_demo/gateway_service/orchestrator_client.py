@@ -3,6 +3,7 @@ import requests
 
 ORCHESTRATOR_URL = os.environ.get("ORCHESTRATOR_URL", "http://localhost:8040")
 
+
 def run_orchestrator(thread_id: str, query: str, user_role: str, hints: dict) -> dict:
     r = requests.post(
         f"{ORCHESTRATOR_URL}/run",

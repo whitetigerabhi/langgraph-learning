@@ -3,6 +3,9 @@ from openai import AzureOpenAI
 from state import AgentState
 from nodes.agent_decide import TOOLS
 
+DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "chat-model")
+
+
 def _client():
     return AzureOpenAI(
         api_key=os.environ["AZURE_OPENAI_API_KEY"],
@@ -10,7 +13,6 @@ def _client():
         api_version="2024-10-21",
     )
 
-DEPLOYMENT = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "chat-model")
 
 def finalize_node(state: AgentState):
     if state.get("answer"):
