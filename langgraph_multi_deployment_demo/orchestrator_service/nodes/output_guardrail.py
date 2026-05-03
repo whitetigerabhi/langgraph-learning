@@ -1,5 +1,5 @@
 from state import AgentState
- import should_block
+import should_block
 
 def output_guardrail_node(state: AgentState):
     ans = (state.get("answer") or "").strip()
