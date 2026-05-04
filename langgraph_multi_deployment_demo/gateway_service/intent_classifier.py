@@ -28,7 +28,7 @@ def classify_intent(message: str) -> dict:
     Classify user intent.
     Returns JSON dict:
       {
-        "intent": "weather|cricket|general|invalid",
+        "intent": "weather|cricket|general|multi|invalid",
         "location": "",
         "team": "",
         "confidence": 0.0
