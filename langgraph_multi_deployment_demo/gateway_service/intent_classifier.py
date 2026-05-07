@@ -119,4 +119,3 @@ User message: {text}
         }
     except Exception:
         return det
-PY

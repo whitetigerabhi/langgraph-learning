@@ -1,6 +1,3 @@
-cd ~/langgraph-learning/langgraph_multi_deployment_demo/gateway_service
-
-cat > app.py <<'PY'
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from uuid import uuid4
@@ -77,4 +74,3 @@ def chat(req: ChatRequest, x_user_role: str = Header(default="user")):
             "orchestrator_meta": out.get("meta", {}),
         },
     }
-PY
