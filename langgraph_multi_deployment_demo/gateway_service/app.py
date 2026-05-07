@@ -1,3 +1,6 @@
+cd ~/langgraph-learning/langgraph_multi_deployment_demo/gateway_service
+
+cat > app.py <<'PY'
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from uuid import uuid4
@@ -30,30 +33,35 @@ def chat(req: ChatRequest, x_user_role: str = Header(default="user")):
     if not ok:
         raise HTTPException(status_code=403, detail=reason)
 
-    # 2) Content Safety input guardrail
+    # 2) Content Safety input guardrail (hard gate)
     block_in, cs_in = should_block(msg)
     if block_in:
         raise HTTPException(status_code=403, detail=f"BLOCK: Unsafe input detected. Please try again. details={cs_in}")
 
-    # 3) LLM intent classification
+    # 3) Intent classification (SOFT signal only)
     intent_data = classify_intent(msg)
-    intent = intent_data.get("intent", "invalid")
+    intent = (intent_data.get("intent") or "invalid").strip().lower()
 
+    # IMPORTANT: Do NOT block requests just because classifier says "invalid".
+    # Treat it as "general" and let orchestrator decide (agentic behavior + RAG).
     if intent == "invalid":
-        return {
-            "thread_id": req.thread_id or "",
-            "intent": "invalid",
-            "answer": "I can help with weather, cricket/IPL scores, or general questions. Please rephrase.",
-            "meta": {"content_safety_input": cs_in, "intent_data": intent_data},
-        }
+        intent = "general"
 
     thread_id = req.thread_id or str(uuid4())
-    hints = {"intent": intent, "location": intent_data.get("location", ""), "team": intent_data.get("team", "")}
 
+    hints = {
+        "intent": intent,
+        "location": intent_data.get("location", ""),
+        "team": intent_data.get("team", ""),
+        "classifier_source": intent_data.get("source", ""),
+        "classifier_confidence": intent_data.get("confidence", 0.0),
+    }
+
+    # 4) Call orchestrator
     out = run_orchestrator(thread_id=thread_id, query=msg, user_role=role, hints=hints)
     ans = out.get("answer", "") or ""
 
-    # Optional output guardrail at gateway
+    # 5) Optional output guardrail at gateway too
     block_out, cs_out = should_block(ans) if ans else (False, {})
     if block_out:
         raise HTTPException(status_code=403, detail=f"BLOCK: Output flagged. Please try again. details={cs_out}")
@@ -62,5 +70,11 @@ def chat(req: ChatRequest, x_user_role: str = Header(default="user")):
         "thread_id": thread_id,
         "intent": intent,
         "answer": ans,
-        "meta": {"content_safety_input": cs_in, "content_safety_output": cs_out, "intent_data": intent_data, "orchestrator_meta": out.get("meta", {})},
+        "meta": {
+            "content_safety_input": cs_in,
+            "content_safety_output": cs_out,
+            "intent_data": intent_data,
+            "orchestrator_meta": out.get("meta", {}),
+        },
     }
+PY
