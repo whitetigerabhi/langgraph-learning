@@ -1,4 +1,3 @@
-cat > intent_classifier.py <<'PY'
 import os
 import json
 import re
