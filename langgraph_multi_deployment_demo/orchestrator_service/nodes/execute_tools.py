@@ -4,27 +4,24 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from state import AgentState
 from tools.weather_api import fetch_current_weather
 from tools.cricket_api import fetch_live_cricket
+from rag_retriever import retrieve_docs
 from content_safety import should_block
-
 
 def _run_tool(name: str, args: dict):
     if name == "get_weather":
         return fetch_current_weather(args.get("location", ""))
     if name == "get_cricket":
         return fetch_live_cricket(args.get("team", ""))
+    if name == "retrieve_docs":
+        return retrieve_docs(args.get("query", ""), int(args.get("top_k", 4)))
     return {"error": f"Unknown tool {name}"}
 
-
 def execute_tools_node(state: AgentState):
-    """
-    Executes ALL tool calls in parallel (multi-tool per step).
-    Adds tool outputs back into state.messages as tool messages.
-    """
     calls = list(state.get("tool_calls") or [])
     if not calls:
         return {}
 
-    # Tool-arg guardrail (defense-in-depth)
+    # Tool-arg guardrail: avoid malicious payloads in tool inputs
     for tc in calls:
         args = json.loads(tc.get("arguments") or "{}")
         block, details = should_block(json.dumps(args))
@@ -54,8 +51,6 @@ def execute_tools_node(state: AgentState):
                 out = {"error": str(e)}
 
             tool_results[name] = out
-
-            # Tool response message (OpenAI tool message format for Chat Completions)
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
