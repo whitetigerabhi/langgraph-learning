@@ -1,105 +1,99 @@
 import os
-import json
-import math
-from typing import List, Dict, Any
+from typing import Dict, Any, List
 from openai import AzureOpenAI
 
-BASE_DIR = os.path.dirname(__file__)
-INDEX_PATH = os.path.join(BASE_DIR, "storage", "rag_index.json")
+from azure.search.documents import SearchClient
+from azure.core.credentials import AzureKeyCredential
 
-# Retrieval quality threshold (tune this)
-# Typical starting ranges for cosine similarity in small corpora:
-# 0.75-0.85 stricter, 0.65-0.75 moderate
-RAG_MIN_SCORE = float(os.environ.get("RAG_MIN_SCORE", "0.72"))
+# ---------------- Config ----------------
+SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
+SEARCH_KEY = os.environ["AZURE_SEARCH_KEY"]
+INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index")
 
-# Debug flag: set RAG_DEBUG=1 to print retrieval diagnostics
+AOAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
+AOAI_KEY = os.environ["AZURE_OPENAI_API_KEY"]
+AOAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21")
+EMBED_DEPLOYMENT = os.environ["AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"]
+
+RAG_MIN_SCORE = float(os.environ.get("RAG_MIN_SCORE", "0.65"))
 RAG_DEBUG = os.environ.get("RAG_DEBUG", "0") == "1"
 
+# ---------------- Clients ----------------
+aoai = AzureOpenAI(
+    api_key=AOAI_KEY,
+    azure_endpoint=AOAI_ENDPOINT,
+    api_version=AOAI_API_VERSION,
+)
 
-def _client() -> AzureOpenAI:
-    return AzureOpenAI(
-        api_key=os.environ["AZURE_OPENAI_API_KEY"],
-        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-        api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+search = SearchClient(
+    endpoint=SEARCH_ENDPOINT,
+    index_name=INDEX_NAME,
+    credential=AzureKeyCredential(SEARCH_KEY),
+)
+
+# ---------------- Vector query helper ----------------
+def _make_vector_query(embedding: List[float], top_k: int):
+    """
+    Azure Search SDK version differences:
+    - Newer versions prefer VectorizedQuery objects.
+    - Older builds sometimes accept dicts.
+
+    We try VectorizedQuery first; fallback to dict if import isn't available.
+    """
+    try:
+        from azure.search.documents.models import VectorizedQuery
+        return [VectorizedQuery(vector=embedding, k_nearest_neighbors=top_k, fields="embedding")]
+    except Exception:
+        # Fallback form (works in some SDK versions)
+        return [{"vector": embedding, "k": top_k, "fields": "embedding"}]
+
+# ---------------- Public API ----------------
+def retrieve_docs(query: str, top_k: int = 4) -> Dict[str, Any]:
+    # 1) Embed the query
+    q_emb = aoai.embeddings.create(model=EMBED_DEPLOYMENT, input=[query]).data[0].embedding
+
+    # 2) HYBRID retrieval:
+    #    - search_text uses classic keyword/BM25
+    #    - vector_queries uses embedding similarity
+    vector_queries = _make_vector_query(q_emb, int(top_k))
+
+    results = search.search(
+        search_text=query,                # keyword component
+        vector_queries=vector_queries,    # vector component
+        select=["content", "doc", "chunk_index", "chunk_id"],
+        top=int(top_k),
     )
 
+    matches = []
+    scores = []
 
-def _embedding_deployment() -> str:
-    dep = os.environ.get("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT", "").strip()
-    if not dep:
-        raise RuntimeError(
-            "AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT is not set.\n"
-            "Example:\n"
-            "  export AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT='embedding-model'"
-        )
-    return dep
+    for r in results:
+        score = float(r.get("@search.score", 0.0))
+        scores.append(score)
 
+        matches.append({
+            "score": round(score, 4),
+            "doc": r.get("doc"),
+            "chunk_id": r.get("chunk_id"),
+            "chunk_index": r.get("chunk_index"),
+            "text": r.get("content"),
+        })
 
-def _cosine(a: List[float], b: List[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a)) or 1.0
-    nb = math.sqrt(sum(y * y for y in b)) or 1.0
-    return dot / (na * nb)
-
-
-def _embed_query(query: str) -> List[float]:
-    client = _client()
-    model = _embedding_deployment()
-    resp = client.embeddings.create(model=model, input=[query])
-    return resp.data[0].embedding
-
-
-def retrieve_docs(query: str, top_k: int = 4) -> Dict[str, Any]:
-    """
-    Returns top_k retrieved chunks PLUS retrieval confidence metrics.
-    The agent/runtime can decide whether to USE or IGNORE these results.
-    """
-    if not os.path.exists(INDEX_PATH):
-        raise RuntimeError(f"RAG index not found at {INDEX_PATH}. Run: python3 build_rag_index.py")
-
-    with open(INDEX_PATH, "r", encoding="utf-8") as f:
-        records = json.load(f).get("records", [])
-
-    qemb = _embed_query(query)
-
-    scored = []
-    for rec in records:
-        score = _cosine(qemb, rec["embedding"])
-        scored.append((score, rec))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:max(1, int(top_k))]
-
-    scores = [s for s, _ in top]
     max_score = max(scores) if scores else 0.0
-    min_score = min(scores) if scores else 0.0
-    avg_score = sum(scores) / len(scores) if scores else 0.0
-
     is_relevant = max_score >= RAG_MIN_SCORE
 
     if RAG_DEBUG:
-        print("\n🔎 RAG DEBUG")
+        print("\n🔎 HYBRID RETRIEVAL DEBUG")
         print(f"Query: {query}")
-        print(f"TopK: {top_k} | threshold: {RAG_MIN_SCORE} | max_score: {max_score:.4f} | relevant: {is_relevant}")
-        for s, r in top:
-            print(f"  {s:.4f} | {r['doc']} | chunk_id={r['chunk_id']} | idx={r['chunk_index']}")
+        print(f"top_k={top_k} | max_score={max_score:.4f} | threshold={RAG_MIN_SCORE} | relevant={is_relevant}")
+        for m in matches:
+            print(f"  {m['score']:.4f} | {m['doc']} | {m['chunk_id']} | idx={m['chunk_index']}")
 
     return {
         "query": query,
         "top_k": int(top_k),
         "threshold_used": RAG_MIN_SCORE,
         "max_score": round(max_score, 4),
-        "min_score": round(min_score, 4),
-        "avg_score": round(avg_score, 4),
         "is_relevant": bool(is_relevant),
-        "matches": [
-            {
-                "score": round(s, 4),
-                "doc": r["doc"],
-                "chunk_id": r["chunk_id"],
-                "chunk_index": r["chunk_index"],
-                "text": r["text"],
-            }
-            for s, r in top
-        ],
+        "matches": matches,
     }
