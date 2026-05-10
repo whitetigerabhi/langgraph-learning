@@ -5,62 +5,63 @@ from azure.search.documents.indexes.models import (
     SearchIndex,
     SimpleField,
     SearchableField,
+    SearchField,
+    SearchFieldDataType,
     VectorSearch,
-    VectorSearchAlgorithmConfiguration,
+    HnswAlgorithmConfiguration,
+    VectorSearchProfile,
 )
 
-# ---------- Config ----------
 endpoint = os.environ["AZURE_SEARCH_ENDPOINT"]
 key = os.environ["AZURE_SEARCH_KEY"]
 index_name = os.environ.get("AZURE_SEARCH_INDEX", "rag-index")
+
+# text-embedding-3-small produces 1536-d vectors (you deployed embedding-model)
 embedding_dim = int(os.environ.get("EMBEDDING_DIM", "1536"))
 
-# ---------- Client ----------
+# Names used by vector search
+ALGO_NAME = "hnsw-algo"
+PROFILE_NAME = "vector-profile"
+
 client = SearchIndexClient(endpoint, AzureKeyCredential(key))
 
-# ---------- Fields ----------
 fields = [
-    # Primary key for each chunk record
-    SimpleField(name="id", type="Edm.String", key=True),
+    SimpleField(name="id", type=SearchFieldDataType.String, key=True),
 
-    # Chunk text used for keyword search + returned to the LLM for grounding
-    SearchableField(name="content", type="Edm.String"),
+    # Full-text searchable chunk content (keyword side of hybrid)
+    SearchableField(name="content", type=SearchFieldDataType.String),
 
-    # Source doc name for citations/filtering
-    SearchableField(name="doc", type="Edm.String", filterable=True, facetable=True),
+    # Source metadata
+    SearchableField(name="doc", type=SearchFieldDataType.String, filterable=True, facetable=True),
+    SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
+    SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
 
-    # Chunk order within doc (useful for debugging/reconstruction)
-    SimpleField(name="chunk_index", type="Edm.Int32", filterable=True),
-
-    # Stable citation id per chunk
-    SimpleField(name="chunk_id", type="Edm.String", filterable=True),
-
-    # Vector embedding field (used for vector similarity)
-    SimpleField(
+    # Vector field (semantic side of hybrid)
+    SearchField(
         name="embedding",
-        type="Collection(Edm.Single)",
+        type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
         searchable=True,
         vector_search_dimensions=embedding_dim,
-        vector_search_configuration="vector-config"
+        vector_search_profile_name=PROFILE_NAME,
     ),
 ]
 
-# ---------- Vector search config ----------
-# HNSW is the standard ANN algorithm used by Azure AI Search for vector search
 vector_search = VectorSearch(
-    algorithm_configurations=[
-        VectorSearchAlgorithmConfiguration(
-            name="vector-config",
-            kind="hnsw",
+    algorithms=[
+        HnswAlgorithmConfiguration(
+            name=ALGO_NAME,
+            # parameters optional; defaults are fine for prototype
         )
-    ]
+    ],
+    profiles=[
+        VectorSearchProfile(
+            name=PROFILE_NAME,
+            algorithm_configuration_name=ALGO_NAME,
+        )
+    ],
 )
 
-index = SearchIndex(
-    name=index_name,
-    fields=fields,
-    vector_search=vector_search,
-)
+index = SearchIndex(name=index_name, fields=fields, vector_search=vector_search)
 
 client.create_or_update_index(index)
-print(f"✅ Index created/updated: {index_name} (embedding_dim={embedding_dim})")
+print(f"✅ Index created/updated: {index_name} (dims={embedding_dim}, profile={PROFILE_NAME})")

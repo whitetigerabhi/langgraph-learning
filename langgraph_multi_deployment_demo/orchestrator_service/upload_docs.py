@@ -4,11 +4,9 @@ import uuid
 import hashlib
 from typing import List
 from openai import AzureOpenAI
-
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
 
-# ---------------- Config ----------------
 DOCS_GLOB = "rag_docs/*.md"
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "900"))        # chars
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "150"))  # chars
@@ -21,9 +19,8 @@ INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index")
 AOAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AOAI_KEY = os.environ["AZURE_OPENAI_API_KEY"]
 AOAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-10-21")
-EMBED_DEPLOYMENT = os.environ["AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"]  # e.g. embedding-model
+EMBED_DEPLOYMENT = os.environ["AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"]  # embedding-model
 
-# ---------------- Clients ----------------
 aoai = AzureOpenAI(
     api_key=AOAI_KEY,
     azure_endpoint=AOAI_ENDPOINT,
@@ -36,7 +33,6 @@ search = SearchClient(
     credential=AzureKeyCredential(SEARCH_KEY),
 )
 
-# ---------------- Helpers ----------------
 def chunk_text(text: str, size: int, overlap: int) -> List[str]:
     text = (text or "").replace("\r\n", "\n")
     chunks = []
@@ -60,7 +56,6 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     resp = aoai.embeddings.create(model=EMBED_DEPLOYMENT, input=texts)
     return [d.embedding for d in resp.data]
 
-# ---------------- Main ----------------
 def main():
     paths = sorted(glob.glob(DOCS_GLOB))
     if not paths:
@@ -91,15 +86,14 @@ def main():
                     "embedding": emb,
                 })
 
-    print(f"⬆️ Uploading {len(docs_to_upload)} chunk docs to index '{INDEX_NAME}' ...")
-    result = search.upload_documents(documents=docs_to_upload)
-
-    failed = [r for r in result if not r.succeeded]
+    print(f"⬆️ Uploading {len(docs_to_upload)} chunks to index '{INDEX_NAME}' ...")
+    results = search.upload_documents(documents=docs_to_upload)
+    failed = [r for r in results if not r.succeeded]
     if failed:
-        print(f"⚠️ Upload finished with failures: {len(failed)}")
+        print(f"⚠️ Upload completed with {len(failed)} failures. First few:")
         print(failed[:3])
     else:
-        print("✅ Upload complete (all documents succeeded)")
+        print("✅ Upload complete (all succeeded)")
 
 if __name__ == "__main__":
     main()
