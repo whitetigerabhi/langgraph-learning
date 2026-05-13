@@ -7,6 +7,7 @@ from openai import AzureOpenAI
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
 
+
 # -----------------------
 # Env / Config
 # -----------------------
@@ -17,7 +18,7 @@ PG_PASSWORD = os.environ["PG_PASSWORD"]
 
 SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
 SEARCH_KEY = os.environ["AZURE_SEARCH_KEY"]
-INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index")
+INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index-live")
 
 AOAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AOAI_KEY = os.environ["AZURE_OPENAI_API_KEY"]
@@ -27,6 +28,7 @@ EMBED_DEPLOYMENT = os.environ["AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT"]  # e.g. embe
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "900"))        # chars
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "150"))  # chars
 EMBED_BATCH_SIZE = int(os.environ.get("EMBED_BATCH_SIZE", "16"))
+
 
 # -----------------------
 # Clients
@@ -43,13 +45,20 @@ search = SearchClient(
     credential=AzureKeyCredential(SEARCH_KEY),
 )
 
+
 # -----------------------
 # Helpers
 # -----------------------
-def chunk_text(text: str, size: int, overlap: int) -> Listtext = (text or "").replace("\r\n", "\n")
-    chunks = []
+def chunk_text(text: str, size: int, overlap: int) -> List[str]:
+    """
+    Chunk a long string into overlapping character windows.
+    Overlap helps avoid cutting key phrases at boundaries.
+    """
+    text = (text or "").replace("\r\n", "\n")
+    chunks: List[str] = []
     start = 0
     n = len(text)
+
     while start < n:
         end = min(n, start + size)
         chunk = text[start:end].strip()
@@ -58,22 +67,36 @@ def chunk_text(text: str, size: int, overlap: int) -> Listtext = (text or "").re
         if end >= n:
             break
         start = max(0, end - overlap)
+
     return chunks
 
+
 def stable_id(prefix: str, source_id: str, chunk_index: int) -> str:
-    # Stable deterministic doc id so re-ingestion updates same docs
+    """
+    Stable deterministic id so re-ingestion updates the same search docs.
+    Example: policy_42_0_<hash>
+    """
     raw = f"{prefix}:{source_id}:{chunk_index}"
     h = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
     return f"{prefix}_{source_id}_{chunk_index}_{h}"
 
+
 def embed_texts(texts: List[str]) -> List[List[float]]:
+    """
+    Batch embed using Azure OpenAI embeddings deployment.
+    """
     resp = aoai.embeddings.create(model=EMBED_DEPLOYMENT, input=texts)
     return [d.embedding for d in resp.data]
 
+
 def fetch_rows(conn) -> Tuple[List[tuple], List[tuple]]:
+    """
+    Fetch policies and runbooks. Joins teams table if it exists.
+    If teams doesn't exist, owner_team becomes empty string.
+    """
     cur = conn.cursor()
 
-    # policies: (id, policy_type, title, body, effective_date, owner_team)
+    # Policies
     cur.execute("""
         SELECT
           p.id::text,
@@ -87,7 +110,7 @@ def fetch_rows(conn) -> Tuple[List[tuple], List[tuple]]:
     """)
     policies = cur.fetchall()
 
-    # runbooks: (id, severity, title, description, steps, owner_team)
+    # Runbooks
     cur.execute("""
         SELECT
           r.id::text,
@@ -104,8 +127,10 @@ def fetch_rows(conn) -> Tuple[List[tuple], List[tuple]]:
     cur.close()
     return policies, runbooks
 
-def make_policy_content(row: tuple) -> Dict[str, Any]:
+
+def make_policy_unit(row: tuple) -> Dict[str, Any]:
     source_id, policy_type, title, body, effective_date, owner_team = row
+
     header = (
         f"Policy\n"
         f"Policy Type: {policy_type}\n"
@@ -113,44 +138,53 @@ def make_policy_content(row: tuple) -> Dict[str, Any]:
         f"Effective Date: {effective_date}\n"
         f"Owner Team: {owner_team}\n"
     ).strip()
+
     content = f"{header}\n\n{body}".strip()
+
     return {
         "entity_type": "policy",
         "source_table": "policies",
         "source_id": source_id,
         "title": title,
-        "content": content,
+        "full_content": content,
+
+        # metadata fields (some will be empty for non-policy docs)
         "policy_type": policy_type,
         "severity": "",
         "owner_team": owner_team,
         "effective_date": effective_date,
     }
 
-def make_runbook_content(row: tuple) -> Dict[str, Any]:
+
+def make_runbook_unit(row: tuple) -> Dict[str, Any]:
     source_id, severity, title, description, steps, owner_team = row
+
     header = (
         f"Runbook\n"
         f"Severity: {severity}\n"
         f"Title: {title}\n"
         f"Owner Team: {owner_team}\n"
     ).strip()
+
     body = f"{description}\n\nSteps:\n{steps}".strip()
     content = f"{header}\n\n{body}".strip()
+
     return {
         "entity_type": "runbook",
         "source_table": "incident_runbooks",
         "source_id": source_id,
         "title": title,
-        "content": content,
+        "full_content": content,
+
         "policy_type": "",
         "severity": severity,
         "owner_team": owner_team,
         "effective_date": "",
     }
 
+
 def upload_docs(docs: List[Dict[str, Any]]):
     if not docs:
-        print("No docs to upload.")
         return
     results = search.merge_or_upload_documents(documents=docs)
     failed = [r for r in results if not r.succeeded]
@@ -158,7 +192,8 @@ def upload_docs(docs: List[Dict[str, Any]]):
         print(f"⚠️ Upload completed with {len(failed)} failures. First few:")
         print(failed[:3])
     else:
-        print(f"✅ Uploaded {len(docs)} documents")
+        print(f"✅ Uploaded {len(docs)} documents to index '{INDEX_NAME}'")
+
 
 # -----------------------
 # Main
@@ -175,38 +210,36 @@ def main():
     policies_rows, runbooks_rows = fetch_rows(conn)
     print(f"Fetched policies={len(policies_rows)}, runbooks={len(runbooks_rows)} from PostgreSQL")
 
-    # Convert rows into chunkable “knowledge units”
     units: List[Dict[str, Any]] = []
-    for r in policies_rows:
-        units.append(make_policy_content(r))
-    for r in runbooks_rows:
-        units.append(make_runbook_content(r))
+    units.extend(make_policy_unit(r) for r in policies_rows)
+    units.extend(make_runbook_unit(r) for r in runbooks_rows)
 
-    # Chunk + embed + upload
+    # We'll embed and upload in batches to avoid large memory use
+    batch_texts: List[str] = []
+    batch_meta: List[tuple] = []
     batch_docs: List[Dict[str, Any]] = []
-    texts_to_embed: List[str] = []
-    metas: List[Dict[str, Any]] = []
 
     for unit in units:
-        chunks = chunk_text(unit["content"], CHUNK_SIZE, CHUNK_OVERLAP)
-        for i, ch in enumerate(chunks):
-            doc_id = stable_id(unit["entity_type"], unit["source_id"], i)
-            metas.append((unit, i, doc_id, ch))
-            texts_to_embed.append(ch)
+        chunks = chunk_text(unit["full_content"], CHUNK_SIZE, CHUNK_OVERLAP)
 
-            # embed in batches
-            if len(texts_to_embed) >= EMBED_BATCH_SIZE:
-                embs = embed_texts(texts_to_embed)
-                for emb, (u, idx, did, text) in zip(embs, metas):
+        for ci, chunk in enumerate(chunks):
+            doc_id = stable_id(unit["entity_type"], unit["source_id"], ci)
+            batch_texts.append(chunk)
+            batch_meta.append((unit, ci, doc_id, chunk))
+
+            if len(batch_texts) >= EMBED_BATCH_SIZE:
+                embs = embed_texts(batch_texts)
+
+                for emb, (u, chunk_index, did, ctext) in zip(embs, batch_meta):
                     batch_docs.append({
                         "id": did,
                         "entity_type": u["entity_type"],
                         "title": u["title"],
-                        "content": text,
+                        "content": ctext,
 
                         "source_table": u["source_table"],
                         "source_id": u["source_id"],
-                        "chunk_index": idx,
+                        "chunk_index": chunk_index,
 
                         "policy_type": u["policy_type"],
                         "severity": u["severity"],
@@ -215,26 +248,27 @@ def main():
 
                         "embedding": emb,
                     })
-                texts_to_embed, metas = [], []
 
-                # upload periodically to keep memory low
+                batch_texts, batch_meta = [], []
+
+                # Upload periodically
                 if len(batch_docs) >= 500:
                     upload_docs(batch_docs)
                     batch_docs = []
 
-    # flush remainder
-    if texts_to_embed:
-        embs = embed_texts(texts_to_embed)
-        for emb, (u, idx, did, text) in zip(embs, metas):
+    # Flush remaining
+    if batch_texts:
+        embs = embed_texts(batch_texts)
+        for emb, (u, chunk_index, did, ctext) in zip(embs, batch_meta):
             batch_docs.append({
                 "id": did,
                 "entity_type": u["entity_type"],
                 "title": u["title"],
-                "content": text,
+                "content": ctext,
 
                 "source_table": u["source_table"],
                 "source_id": u["source_id"],
-                "chunk_index": idx,
+                "chunk_index": chunk_index,
 
                 "policy_type": u["policy_type"],
                 "severity": u["severity"],
@@ -249,6 +283,7 @@ def main():
 
     conn.close()
     print("✅ Done")
+
 
 if __name__ == "__main__":
     main()
