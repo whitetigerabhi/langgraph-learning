@@ -34,6 +34,7 @@ fields = [
     SimpleField(name="source_table", type=SearchFieldDataType.String, filterable=True, facetable=True),
     SimpleField(name="source_id", type=SearchFieldDataType.String, filterable=True),
     SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
+    SimpleField(name="chunk_id", type=SearchFieldDataType.String, filterable=True),
 
     # Filters (subset applies by entity_type)
     SimpleField(name="policy_type", type=SearchFieldDataType.String, filterable=True, facetable=True),
