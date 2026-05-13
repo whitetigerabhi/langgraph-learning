@@ -13,7 +13,7 @@ from azure.search.documents.models import VectorizedQuery
 # -----------------------------
 SEARCH_ENDPOINT = os.environ["AZURE_SEARCH_ENDPOINT"]
 SEARCH_KEY = os.environ["AZURE_SEARCH_KEY"]
-INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index")
+INDEX_NAME = os.environ.get("AZURE_SEARCH_INDEX", "rag-index-live")
 
 AOAI_ENDPOINT = os.environ["AZURE_OPENAI_ENDPOINT"]
 AOAI_KEY = os.environ["AZURE_OPENAI_API_KEY"]
@@ -29,7 +29,7 @@ RAG_ENABLE_REWRITE = os.environ.get("RAG_ENABLE_REWRITE", "1") == "1"
 RAG_ENABLE_RERANK = os.environ.get("RAG_ENABLE_RERANK", "1") == "1"
 
 # IMPORTANT: rerank score is 0..1 (LLM-produced), not Azure @search.score
-RAG_RERANK_MIN = float(os.environ.get("RAG_RERANK_MIN", "0.55"))
+RAG_RERANK_MIN = float(os.environ.get("RAG_RERANK_MIN", "0.30"))
 
 RAG_DEBUG = os.environ.get("RAG_DEBUG", "0") == "1"
 
@@ -54,27 +54,22 @@ search = SearchClient(
 # Helpers
 # -----------------------------
 def _embed_one(text: str) -> List[float]:
-    """Embed a single string using the configured Azure OpenAI embeddings deployment."""
+    """Embed a single string using Azure OpenAI embeddings deployment."""
     resp = aoai.embeddings.create(model=EMBED_DEPLOYMENT, input=[text])
     return resp.data[0].embedding
 
 
 def _rewrite_query(user_query: str) -> str:
-    """
-    Use a chat model to rewrite the query for better retrieval:
-    - Add likely doc keywords
-    - Remove fluff
-    - Keep it short
-    """
+    """Use a chat model to rewrite the query for better retrieval."""
     if not RAG_ENABLE_REWRITE:
         return user_query
 
     prompt = f"""
-Rewrite the following question into a search-friendly query for retrieving internal policy/runbook/product documentation.
+Rewrite the following question into a search-friendly query for retrieving internal policy/runbook documentation.
 
 Rules:
 - Keep it short (<= 18 words).
-- Add missing keywords that would likely appear in internal docs.
+- Add keywords likely present in internal docs.
 - Keep meaning the same.
 - Return ONLY the rewritten query.
 
@@ -97,9 +92,8 @@ Question:
 def _hybrid_candidates(query_text: str, top_n: int) -> List[Dict[str, Any]]:
     """
     Hybrid retrieval from Azure AI Search:
-      - search_text=query_text provides keyword/BM25
-      - vector_queries uses semantic/vector similarity
-    Returns top_n candidates.
+      - keyword search via search_text
+      - vector search via vector_queries (VectorizedQuery)
     """
     q_emb = _embed_one(query_text)
     vq = VectorizedQuery(vector=q_emb, k_nearest_neighbors=int(top_n), fields="embedding")
@@ -108,14 +102,18 @@ def _hybrid_candidates(query_text: str, top_n: int) -> List[Dict[str, Any]]:
         search_text=query_text,
         vector_queries=[vq],
         top=int(top_n),
-        select=["content", "doc", "chunk_index", "chunk_id"],
+        # IMPORTANT: our index schema does NOT have "doc"
+        select=["content", "title", "entity_type", "source_table", "source_id", "chunk_index", "chunk_id"],
     )
 
     out: List[Dict[str, Any]] = []
     for r in results:
         out.append({
             "search_score": float(r.get("@search.score", 0.0)),
-            "doc": r.get("doc"),
+            "entity_type": r.get("entity_type"),
+            "title": r.get("title"),
+            "source_table": r.get("source_table"),
+            "source_id": r.get("source_id"),
             "chunk_id": r.get("chunk_id"),
             "chunk_index": r.get("chunk_index"),
             "text": r.get("content"),
@@ -124,15 +122,10 @@ def _hybrid_candidates(query_text: str, top_n: int) -> List[Dict[str, Any]]:
 
 
 def _llm_rerank(user_query: str, candidates: List[Dict[str, Any]], top_k: int) -> Dict[str, Any]:
-    """
-    LLM reranker:
-    - Input: query + candidate snippets
-    - Output: ranked list and scores (0..1)
-    """
+    """LLM reranker that scores candidates 0..1 and returns top_k."""
     if (not RAG_ENABLE_RERANK) or (not candidates):
         return {"ranked": candidates[:top_k], "max_score": 0.0, "rationale": "rerank_disabled_or_no_candidates"}
 
-    # Trim snippet text to keep prompt small
     packed = []
     for i, c in enumerate(candidates):
         snippet = (c.get("text") or "").replace("\n", " ").strip()
@@ -140,7 +133,10 @@ def _llm_rerank(user_query: str, candidates: List[Dict[str, Any]], top_k: int) -
             snippet = snippet[:450] + "..."
         packed.append({
             "i": i,
-            "doc": c.get("doc"),
+            "entity_type": c.get("entity_type"),
+            "title": c.get("title"),
+            "source_table": c.get("source_table"),
+            "source_id": c.get("source_id"),
             "chunk_id": c.get("chunk_id"),
             "text": snippet,
         })
@@ -151,7 +147,7 @@ def _llm_rerank(user_query: str, candidates: List[Dict[str, Any]], top_k: int) -
         "rules": [
             "Score relevance to the query from 0.0 to 1.0",
             "Prefer snippets that directly answer the query (policy/runbook details)",
-            "If none answer, score low; do not hallucinate missing policy details",
+            "If none answer, score low; do not hallucinate missing details",
             "Return JSON only"
         ],
         "candidates": packed,
@@ -208,13 +204,6 @@ def _llm_rerank(user_query: str, candidates: List[Dict[str, Any]], top_k: int) -
 # Public tool entrypoint
 # -----------------------------
 def retrieve_docs(query: str, top_k: int = None) -> Dict[str, Any]:
-    """
-    Tool called by the orchestrator agent:
-      - rewrite query (optional)
-      - retrieve N candidates (hybrid)
-      - rerank to top_k
-      - return matches + gating signal
-    """
     top_k = int(top_k or RAG_TOP_K)
 
     rewritten = _rewrite_query(query)
@@ -227,6 +216,7 @@ def retrieve_docs(query: str, top_k: int = None) -> Dict[str, Any]:
 
     if RAG_DEBUG:
         print("\n🔎 RAG PIPELINE DEBUG")
+        print(f"Index: {INDEX_NAME}")
         print(f"Query: {query}")
         print(f"Rewritten: {rewritten}")
         print(f"Candidates: {len(candidates)} | top_k={top_k}")
@@ -234,7 +224,10 @@ def retrieve_docs(query: str, top_k: int = None) -> Dict[str, Any]:
         if rr.get("rationale"):
             print("Rationale:", rr["rationale"])
         for m in matches:
-            print(f"  rerank={m.get('rerank_score',0):.3f} | search={m.get('search_score',0):.3f} | {m.get('doc')} | {m.get('chunk_id')}")
+            print(
+                f"  rerank={m.get('rerank_score',0):.3f} | search={m.get('search_score',0):.3f} | "
+                f"{m.get('entity_type')} | {m.get('title')} | {m.get('source_table')}:{m.get('source_id')} | {m.get('chunk_id')}"
+            )
 
     return {
         "query": query,
@@ -246,7 +239,10 @@ def retrieve_docs(query: str, top_k: int = None) -> Dict[str, Any]:
         "rationale": rr.get("rationale", ""),
         "matches": [
             {
-                "doc": m.get("doc"),
+                "entity_type": m.get("entity_type"),
+                "title": m.get("title"),
+                "source_table": m.get("source_table"),
+                "source_id": m.get("source_id"),
                 "chunk_id": m.get("chunk_id"),
                 "chunk_index": m.get("chunk_index"),
                 "search_score": round(float(m.get("search_score", 0.0)), 4),
