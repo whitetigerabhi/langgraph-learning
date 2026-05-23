@@ -14,4 +14,3 @@ def rq_retry_rewrite_node(state: CricketState) -> CricketState:
     retrieval["attempt"] = 2
 
     return {"retrieval": retrieval}
-``
