@@ -13,13 +13,25 @@ class CricketState(TypedDict, total=False):
     memory_saved: bool
 
     # Routing / planning
-    route: str
+    route: str                  # "analytics" | "trivia"
     route_reason: str
+
+    # Analytics path
     query_id: str
     query_params: Dict[str, Any]
-
-    # Action API output
     action_result: Dict[str, Any]
+
+    # Retrieval path
+    retrieval: Dict[str, Any]
+    # recommended structure:
+    # {
+    #   "query_rewritten": str,
+    #   "candidates": int,
+    #   "matches": [ ... ],
+    #   "citations": [ ... ],
+    #   "confidence": float,
+    #   "is_relevant": bool
+    # }
 
     # Final answer
     answer: str

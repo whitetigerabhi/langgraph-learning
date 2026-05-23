@@ -2,10 +2,6 @@ from state import CricketState
 
 
 def supervisor_route_node(state: CricketState) -> CricketState:
-    """
-    First vertical slice: route only analytics-style queries.
-    Later we will expand this to trivia / mixed / clarify.
-    """
     message = (state.get("message") or "").lower()
 
     analytics_keywords = [
@@ -14,14 +10,25 @@ def supervisor_route_node(state: CricketState) -> CricketState:
         "by season", "min balls", "run rate"
     ]
 
+    trivia_keywords = [
+        "what is", "explain", "define", "meaning",
+        "who is", "tell me about", "trivia", "rule", "rules"
+    ]
+
     if any(k in message for k in analytics_keywords):
         return {
             "route": "analytics",
             "route_reason": "deterministic_analytics_keyword_match",
         }
 
-    # For now everything goes to analytics path as default in this slice.
+    if any(k in message for k in trivia_keywords):
+        return {
+            "route": "trivia",
+            "route_reason": "deterministic_trivia_keyword_match",
+        }
+
+    # First fallback: default to trivia for explanatory queries
     return {
-        "route": "analytics",
-        "route_reason": "default_to_analytics_for_first_slice",
+        "route": "trivia",
+        "route_reason": "default_to_trivia_for_step5",
     }
