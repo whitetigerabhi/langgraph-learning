@@ -10,9 +10,10 @@ class CricketState(TypedDict, total=False):
     # Memory
     history: List[Dict[str, str]]
     memory_summary: str
+    memory_saved: bool
 
     # Routing / planning
-    route: str                  # "analytics" for this first slice
+    route: str
     route_reason: str
     query_id: str
     query_params: Dict[str, Any]

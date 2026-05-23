@@ -24,6 +24,10 @@ def memory_save_node(state: CricketState) -> CricketState:
             metadata={"trace": state.get("action_result", {}).get("trace_id")},
         )
 
-        return {}
+        return {"memory_saved": True}
+
     except Exception as e:
-        return {"error": f"memory_save_failed: {str(e)}"}
+        return {
+            "memory_saved": False,
+            "error": f"memory_save_failed: {str(e)}"
+        }
