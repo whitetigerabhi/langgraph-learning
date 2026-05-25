@@ -16,4 +16,3 @@ LOOKUP = {
 def resolve(term: str) -> str | None:
     t = term.strip().lower()
     return LOOKUP.get(t)
-``
