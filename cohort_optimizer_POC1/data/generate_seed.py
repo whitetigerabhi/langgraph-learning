@@ -93,7 +93,7 @@ def generate(n=4000, seed=7):
 
 def write_sql(df: pd.DataFrame, out_path: str):
     create_sql = """
-DROP TABLE IF EXISTS members;
+DROP TABLE IF EXISTS cohort_data.members;
 CREATE TABLE cohort_data.members (
   member_id INT PRIMARY KEY,
   asthma INT,
@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_members_retinopathy ON cohort_data.members(retino
         values.append("(" + ",".join(str(x) for x in row) + ")")
 
     chunk_size = 800
-    insert_prefix = "INSERT INTO members (" + ", ".join(cols) + ") VALUES\n"
+    insert_prefix = "INSERT INTO cohort_data.members (" + ", ".join(cols) + ") VALUES\n"
     chunks = []
     for i in range(0, len(values), chunk_size):
         chunks.append(insert_prefix + ",\n".join(values[i:i+chunk_size]) + ";")
