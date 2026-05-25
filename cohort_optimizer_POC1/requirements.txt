@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+networkx
+psycopg2-binary
+pydantic
+langgraph
+numpy
+pandas
