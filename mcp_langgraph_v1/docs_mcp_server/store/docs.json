@@ -1,0 +1,32 @@
+[
+  {
+    "doc_id": "prd_001",
+    "doc_type": "prd",
+    "title": "Cohort Creation Rollout Constraints",
+    "chunks": [
+      {
+        "chunk_id": "prd_001_01",
+        "text": "The rollout is gated on data quality validation and SME signoff for generated cohort definitions."
+      },
+      {
+        "chunk_id": "prd_001_02",
+        "text": "Initial release should remain limited to controlled pilot markets until confirmation-loop performance is stable."
+      },
+      {
+        "chunk_id": "prd_001_03",
+        "text": "Operational risk is highest when ambiguous free-text criteria are converted directly to executable logic without user confirmation."
+      }
+    ]
+  },
+  {
+    "doc_id": "prd_002",
+    "doc_type": "prd",
+    "title": "Analytics Platform Migration Notes",
+    "chunks": [
+      {
+        "chunk_id": "prd_002_01",
+        "text": "Adoption should be driven by demonstrated value rather than a forced migration strategy."
+      }
+    ]
+  }
+]

@@ -1,0 +1,5 @@
+ROUTE_ANALYTICS = "analytics"
+ROUTE_RETRIEVAL = "retrieval"
+ROUTE_MIXED = "mixed"
+ROUTE_CLARIFY = "clarify"
+ROUTE_UNSUPPORTED = "unsupported"

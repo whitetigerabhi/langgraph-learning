@@ -1,0 +1,60 @@
+mcp_assistant/
+│
+├── host_app/
+│   ├── app.py                  # main chat API / CLI
+│   ├── router.py               # analytics vs docs vs mixed
+│   ├── llm.py                  # model invocation
+│   ├── mcp_clients/
+│   │   ├── analytics_client.py
+│   │   └── docs_client.py
+│   └── response_builder.py
+│
+├── analytics_mcp_server/
+│   ├── server.py
+│   ├── tools/
+│   │   └── stats_query.py
+│   ├── sql/
+│   │   ├── templates.py
+│   │   └── validators.py
+│   └── db.py
+│
+├── docs_mcp_server/
+│   ├── server.py
+│   ├── tools/
+│   │   ├── search_docs.py
+│   │   └── read_doc.py
+│   └── index/
+│       ├── ingest.py
+│       └── search.py
+│
+└── shared/
+    ├── schemas.py
+    └── config.py
+
+
+
+
+
+
+
+
+
+
+User
+  ↓
+API / Chat Interface
+  ↓
+LangGraph Host Application
+  ├── Graph State
+  ├── Node: Intake / Normalization
+  ├── Node: Intent & Entity Agent
+  ├── Node: Adequacy / Clarification Agent
+  ├── Node: Route Selector
+  ├── Node: Analytics Agent
+  │        └── MCP Client → Analytics MCP Server → PostgreSQL
+  ├── Node: Retrieval Agent
+  │        └── MCP Client → Docs MCP Server → Vector/Docs Store
+  ├── Node: Memory Agent (optional in v1-lite)
+  │        └── MCP Client → Memory MCP Server → Memory Store
+  ├── Node: Synthesis Agent
+  └── Node: Final Response / Clarification Response
