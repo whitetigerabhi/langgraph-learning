@@ -31,4 +31,3 @@ FROM (
 ) AS s(team_code, player_name, runs, balls, sr)
 JOIN cricket_mcp.teams t ON t.team_code = s.team_code
 JOIN cricket_mcp.players p ON p.player_name = s.player_name;
-``

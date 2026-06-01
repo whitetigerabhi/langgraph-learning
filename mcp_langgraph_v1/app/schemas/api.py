@@ -1,8 +1,4 @@
-from pydantic import BaseModelfrom pydantic import Base_id: str
-    final_answer: str
-    trace: list[str]
-    route: str | None = None
-
+from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
@@ -11,3 +7,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    thread_id: str
+    final_answer: str
+    trace: list[str]
+    route: str | None = None

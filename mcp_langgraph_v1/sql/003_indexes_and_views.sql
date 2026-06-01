@@ -17,4 +17,3 @@ SELECT
 FROM cricket_mcp.batting_stats bs
 JOIN cricket_mcp.teams t ON t.team_id = bs.team_id
 JOIN cricket_mcp.players p ON p.player_id = bs.player_id;
-``
